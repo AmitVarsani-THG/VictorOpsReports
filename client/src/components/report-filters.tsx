@@ -1,13 +1,16 @@
 import { useState, useEffect } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { Filter, BarChart2, Download } from "lucide-react";
+import { Filter, BarChart2, Download, Check, ChevronsUpDown } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
 import { OohHoursConfig } from "@/components/ooh-hours-config";
+import { cn } from "@/lib/utils";
 import { type ReportSummary, type ReportFilters, type Team, type User, type EscalationPolicy, type OohHours } from "@shared/schema";
 
 interface ReportFiltersProps {
@@ -19,6 +22,7 @@ export function ReportFilters({ onReportGenerated, isApiConfigured }: ReportFilt
   const [reportType, setReportType] = useState<"team" | "user">("team");
   const [selectedTarget, setSelectedTarget] = useState("");
   const [selectedEscalationPolicy, setSelectedEscalationPolicy] = useState("all-policies");
+  const [targetPopoverOpen, setTargetPopoverOpen] = useState(false);
   const [oohHours, setOohHours] = useState<OohHours>({
     weekdayStart: "17:00",
     weekdayEnd: "09:00",
@@ -154,6 +158,7 @@ export function ReportFilters({ onReportGenerated, isApiConfigured }: ReportFilt
   // Reset selected target when report type changes
   useEffect(() => {
     setSelectedTarget("");
+    setTargetPopoverOpen(false);
   }, [reportType]);
 
   const targetOptions = reportType === "team" ? teams : users;
@@ -199,25 +204,53 @@ export function ReportFilters({ onReportGenerated, isApiConfigured }: ReportFilt
             <Label htmlFor="target-selection">
               {reportType === "team" ? "Team" : "User"}
             </Label>
-            <Select
-              value={selectedTarget}
-              onValueChange={setSelectedTarget}
-              disabled={!isApiConfigured}
-            >
-              <SelectTrigger data-testid="select-target">
-                <SelectValue placeholder={`Select ${reportType}`} />
-              </SelectTrigger>
-              <SelectContent>
-                {targetOptions.map((item) => (
-                  <SelectItem 
-                    key={getTargetValue(item)} 
-                    value={getTargetValue(item)}
-                  >
-                    {getTargetLabel(item)}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <Popover open={targetPopoverOpen} onOpenChange={setTargetPopoverOpen}>
+              <PopoverTrigger asChild>
+                <Button
+                  variant="outline"
+                  role="combobox"
+                  aria-expanded={targetPopoverOpen}
+                  className="w-full justify-between"
+                  disabled={!isApiConfigured}
+                  data-testid="select-target"
+                >
+                  {selectedTarget
+                    ? targetOptions.find((item) => getTargetValue(item) === selectedTarget)
+                      ? getTargetLabel(targetOptions.find((item) => getTargetValue(item) === selectedTarget)!)
+                      : selectedTarget
+                    : `Select ${reportType}...`}
+                  <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent className="w-full p-0">
+                <Command>
+                  <CommandInput placeholder={`Search ${reportType}s...`} />
+                  <CommandList>
+                    <CommandEmpty>No {reportType} found.</CommandEmpty>
+                    <CommandGroup>
+                      {targetOptions.map((item) => (
+                        <CommandItem
+                          key={getTargetValue(item)}
+                          value={getTargetLabel(item)}
+                          onSelect={() => {
+                            setSelectedTarget(getTargetValue(item));
+                            setTargetPopoverOpen(false);
+                          }}
+                        >
+                          <Check
+                            className={cn(
+                              "mr-2 h-4 w-4",
+                              selectedTarget === getTargetValue(item) ? "opacity-100" : "opacity-0"
+                            )}
+                          />
+                          {getTargetLabel(item)}
+                        </CommandItem>
+                      ))}
+                    </CommandGroup>
+                  </CommandList>
+                </Command>
+              </PopoverContent>
+            </Popover>
           </div>
 
           <div>

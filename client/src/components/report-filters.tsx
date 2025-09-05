@@ -7,7 +7,8 @@ import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
-import { type ReportSummary, type ReportFilters, type Team, type User } from "@shared/schema";
+import { OohHoursConfig } from "@/components/ooh-hours-config";
+import { type ReportSummary, type ReportFilters, type Team, type User, type EscalationPolicy, type OohHours } from "@shared/schema";
 
 interface ReportFiltersProps {
   onReportGenerated: (data: ReportSummary) => void;
@@ -17,6 +18,12 @@ interface ReportFiltersProps {
 export function ReportFilters({ onReportGenerated, isApiConfigured }: ReportFiltersProps) {
   const [reportType, setReportType] = useState<"team" | "user">("team");
   const [selectedTarget, setSelectedTarget] = useState("");
+  const [selectedEscalationPolicy, setSelectedEscalationPolicy] = useState("all-policies");
+  const [oohHours, setOohHours] = useState<OohHours>({
+    weekdayStart: "17:00",
+    weekdayEnd: "09:00",
+    includeWeekends: true
+  });
   const [startDate, setStartDate] = useState(() => {
     const date = new Date();
     date.setMonth(date.getMonth() - 1);
@@ -38,6 +45,12 @@ export function ReportFilters({ onReportGenerated, isApiConfigured }: ReportFilt
   // Fetch users
   const { data: users = [] } = useQuery<User[]>({
     queryKey: ["/api/users"],
+    enabled: isApiConfigured,
+  });
+
+  // Fetch escalation policies
+  const { data: escalationPolicies = [] } = useQuery<EscalationPolicy[]>({
+    queryKey: ["/api/escalation-policies"],
     enabled: isApiConfigured,
   });
 
@@ -109,6 +122,8 @@ export function ReportFilters({ onReportGenerated, isApiConfigured }: ReportFilt
       targetId: selectedTarget,
       startDate,
       endDate,
+      escalationPolicy: selectedEscalationPolicy && selectedEscalationPolicy !== "all-policies" ? selectedEscalationPolicy : undefined,
+      oohHours,
     };
 
     generateReportMutation.mutate(filters);
@@ -129,6 +144,8 @@ export function ReportFilters({ onReportGenerated, isApiConfigured }: ReportFilt
       targetId: selectedTarget,
       startDate,
       endDate,
+      escalationPolicy: selectedEscalationPolicy && selectedEscalationPolicy !== "all-policies" ? selectedEscalationPolicy : undefined,
+      oohHours,
     };
 
     exportCsvMutation.mutate(filters);
@@ -150,16 +167,19 @@ export function ReportFilters({ onReportGenerated, isApiConfigured }: ReportFilt
   };
 
   return (
-    <Card className="mb-8">
-      <CardHeader>
-        <CardTitle className="flex items-center">
-          <Filter className="w-5 h-5 mr-2" />
-          Report Filters
-        </CardTitle>
-      </CardHeader>
-      <CardContent>
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-          <div>
+    <>
+      <OohHoursConfig value={oohHours} onChange={setOohHours} />
+      
+      <Card className="mb-8">
+        <CardHeader>
+          <CardTitle className="flex items-center">
+            <Filter className="w-5 h-5 mr-2" />
+            Report Filters
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
+            <div>
             <Label htmlFor="report-type">Report Type</Label>
             <Select
               value={reportType}
@@ -223,6 +243,30 @@ export function ReportFilters({ onReportGenerated, isApiConfigured }: ReportFilt
               data-testid="input-end-date"
             />
           </div>
+
+          <div>
+            <Label htmlFor="escalation-policy">Escalation Policy (Optional)</Label>
+            <Select
+              value={selectedEscalationPolicy}
+              onValueChange={setSelectedEscalationPolicy}
+              disabled={!isApiConfigured}
+            >
+              <SelectTrigger data-testid="select-escalation-policy">
+                <SelectValue placeholder="All policies" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all-policies">All Escalation Policies</SelectItem>
+                {escalationPolicies.map((policy) => (
+                  <SelectItem 
+                    key={policy.slug} 
+                    value={policy.slug}
+                  >
+                    {policy.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
         </div>
 
         <div className="mt-6 flex items-center space-x-4">
@@ -248,6 +292,7 @@ export function ReportFilters({ onReportGenerated, isApiConfigured }: ReportFilt
           </Button>
         </div>
       </CardContent>
-    </Card>
+      </Card>
+    </>
   );
 }

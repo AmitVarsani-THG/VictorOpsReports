@@ -1,4 +1,4 @@
-import { type ApiConfig, type Team, type User, type Incident, type ReportSummary } from "@shared/schema";
+import { type ApiConfig, type Team, type User, type Incident, type ReportSummary, type EscalationPolicy } from "@shared/schema";
 import { randomUUID } from "crypto";
 
 export interface IStorage {
@@ -11,6 +11,8 @@ export interface IStorage {
   getTeams(): Promise<Team[]>;
   setUsers(users: User[]): Promise<void>;
   getUsers(): Promise<User[]>;
+  setEscalationPolicies(policies: EscalationPolicy[]): Promise<void>;
+  getEscalationPolicies(): Promise<EscalationPolicy[]>;
   
   // Report cache
   setReportCache(key: string, data: ReportSummary): Promise<void>;
@@ -21,6 +23,7 @@ export class MemStorage implements IStorage {
   private apiConfig: ApiConfig | undefined;
   private teams: Team[] = [];
   private users: User[] = [];
+  private escalationPolicies: EscalationPolicy[] = [];
   private reportCache: Map<string, ReportSummary> = new Map();
 
   constructor() {}
@@ -55,6 +58,14 @@ export class MemStorage implements IStorage {
 
   async getReportCache(key: string): Promise<ReportSummary | undefined> {
     return this.reportCache.get(key);
+  }
+
+  async setEscalationPolicies(policies: EscalationPolicy[]): Promise<void> {
+    this.escalationPolicies = policies;
+  }
+
+  async getEscalationPolicies(): Promise<EscalationPolicy[]> {
+    return this.escalationPolicies;
   }
 }
 

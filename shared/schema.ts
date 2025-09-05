@@ -45,12 +45,31 @@ export const incidentSchema = z.object({
 
 export type Incident = z.infer<typeof incidentSchema>;
 
+// OOH Hours Configuration
+export const oohHoursSchema = z.object({
+  weekdayStart: z.string().regex(/^([01]?[0-9]|2[0-3]):[0-5][0-9]$/, "Invalid time format"), // e.g., "17:00"
+  weekdayEnd: z.string().regex(/^([01]?[0-9]|2[0-3]):[0-5][0-9]$/, "Invalid time format"), // e.g., "09:00"
+  includeWeekends: z.boolean().default(true),
+});
+
+export type OohHours = z.infer<typeof oohHoursSchema>;
+
+// Escalation Policy data from VictorOps API
+export const escalationPolicySchema = z.object({
+  name: z.string(),
+  slug: z.string(),
+});
+
+export type EscalationPolicy = z.infer<typeof escalationPolicySchema>;
+
 // Report filter parameters
 export const reportFiltersSchema = z.object({
   reportType: z.enum(["team", "user"]),
   targetId: z.string().min(1, "Team or user selection is required"),
   startDate: z.string().min(1, "Start date is required"),
   endDate: z.string().min(1, "End date is required"),
+  escalationPolicy: z.string().optional(),
+  oohHours: oohHoursSchema.optional(),
 });
 
 export type ReportFilters = z.infer<typeof reportFiltersSchema>;

@@ -1,7 +1,7 @@
 import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
-import { apiConfigSchema, reportFiltersSchema, type ReportSummary, type Team, type User, type Incident } from "@shared/schema";
+import { apiConfigSchema, reportFiltersSchema, type ReportSummary, type Team, type User, type Incident, type EscalationPolicy, type OohHours } from "@shared/schema";
 import axios from "axios";
 
 const VICTOROPS_BASE_URL = "https://api.victorops.com/api-public/v1";
@@ -33,23 +33,46 @@ async function makeVictorOpsRequest(endpoint: string, apiId: string, apiKey: str
   }
 }
 
-// Helper function to determine if time is out of hours (weekends or 6PM-8AM weekdays)
-function isOutOfHours(timestamp: string): boolean {
+// Helper function to determine if time is out of hours using custom configuration
+function isOutOfHours(timestamp: string, oohHours?: OohHours): boolean {
   const date = new Date(timestamp);
   const dayOfWeek = date.getDay(); // 0 = Sunday, 6 = Saturday
   const hour = date.getHours();
+  const minute = date.getMinutes();
+  const timeInMinutes = hour * 60 + minute;
   
-  // Weekend (Saturday or Sunday)
-  if (dayOfWeek === 0 || dayOfWeek === 6) {
+  // Use default OOH hours if not provided (5PM-9AM weekdays, all day weekends)
+  const defaultOohHours: OohHours = {
+    weekdayStart: "17:00", // 5 PM
+    weekdayEnd: "09:00",   // 9 AM
+    includeWeekends: true
+  };
+  
+  const config = oohHours || defaultOohHours;
+  
+  // Weekend check
+  if ((dayOfWeek === 0 || dayOfWeek === 6) && config.includeWeekends) {
     return true;
   }
   
-  // Weekday outside business hours (before 8 AM or after 6 PM)
-  if (hour < 8 || hour >= 18) {
-    return true;
+  // Skip weekends if not included in OOH
+  if ((dayOfWeek === 0 || dayOfWeek === 6) && !config.includeWeekends) {
+    return false;
   }
   
-  return false;
+  // Parse start and end times
+  const [startHour, startMinute] = config.weekdayStart.split(':').map(Number);
+  const [endHour, endMinute] = config.weekdayEnd.split(':').map(Number);
+  const startTimeInMinutes = startHour * 60 + startMinute;
+  const endTimeInMinutes = endHour * 60 + endMinute;
+  
+  // Handle overnight periods (e.g., 17:00-09:00)
+  if (startTimeInMinutes > endTimeInMinutes) {
+    return timeInMinutes >= startTimeInMinutes || timeInMinutes < endTimeInMinutes;
+  } else {
+    // Handle same-day periods (e.g., 09:00-17:00 for reverse logic)
+    return timeInMinutes >= startTimeInMinutes && timeInMinutes < endTimeInMinutes;
+  }
 }
 
 // Helper function to calculate response time in minutes
@@ -125,6 +148,27 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Get escalation policies from VictorOps
+  app.get("/api/escalation-policies", async (req, res) => {
+    try {
+      const config = await storage.getApiConfig();
+      if (!config) {
+        return res.status(401).json({ message: "API configuration not found" });
+      }
+
+      const data = await makeVictorOpsRequest("/policies", config.apiId, config.apiKey);
+      const policies: EscalationPolicy[] = data.policies?.map((policy: any) => ({
+        name: policy.policy?.name || policy.name,
+        slug: policy.policy?.slug || policy.slug
+      })) || [];
+
+      await storage.setEscalationPolicies(policies);
+      res.json(policies);
+    } catch (error) {
+      res.status(400).json({ message: error instanceof Error ? error.message : "Failed to fetch escalation policies" });
+    }
+  });
+
   // Generate report
   app.post("/api/generate-report", async (req, res) => {
     try {
@@ -135,8 +179,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(401).json({ message: "API configuration not found" });
       }
 
-      // Create cache key
-      const cacheKey = `${filters.reportType}-${filters.targetId}-${filters.startDate}-${filters.endDate}`;
+      // Create cache key including escalation policy and OOH hours
+      const oohHoursKey = filters.oohHours ? 
+        `${filters.oohHours.weekdayStart}-${filters.oohHours.weekdayEnd}-${filters.oohHours.includeWeekends}` : 
+        'default';
+      const policyKey = filters.escalationPolicy || 'all';
+      const cacheKey = `${filters.reportType}-${filters.targetId}-${filters.startDate}-${filters.endDate}-${oohHoursKey}-${policyKey}`;
       
       // Check cache first
       const cached = await storage.getReportCache(cacheKey);
@@ -148,8 +196,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const startTime = new Date(filters.startDate).toISOString();
       const endTime = new Date(filters.endDate).toISOString();
       
+      let incidentsUrl = `/incidents?startTime=${startTime}&endTime=${endTime}`;
+      if (filters.escalationPolicy) {
+        incidentsUrl += `&entityId=${filters.escalationPolicy}`;
+      }
+      
       const incidentsData = await makeVictorOpsRequest(
-        `/incidents?startTime=${startTime}&endTime=${endTime}`,
+        incidentsUrl,
         config.apiId,
         config.apiKey
       );
@@ -173,8 +226,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       // Filter for OOH incidents and by team/user
       incidents = incidents.filter(incident => {
-        // Check if incident occurred during out-of-hours
-        if (!isOutOfHours(incident.startTime)) {
+        // Check if incident occurred during out-of-hours using custom configuration
+        if (!isOutOfHours(incident.startTime, filters.oohHours)) {
           return false;
         }
 

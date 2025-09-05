@@ -61,6 +61,12 @@ export function ApiSetup({ onConfigured }: ApiSetupProps) {
         </CardTitle>
       </CardHeader>
       <CardContent>
+        <div className="mb-4 p-3 bg-muted rounded-md">
+          <p className="text-sm text-muted-foreground">
+            To get your API credentials, log into your VictorOps/Splunk On-Call account and navigate to: 
+            <strong> Integrations → API</strong>. Copy your API ID and create an API Key (admin users only).
+          </p>
+        </div>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div>
             <Label htmlFor="api-id">API ID</Label>

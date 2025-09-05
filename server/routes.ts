@@ -19,7 +19,15 @@ async function makeVictorOpsRequest(endpoint: string, apiId: string, apiKey: str
     return response.data;
   } catch (error) {
     if (axios.isAxiosError(error)) {
-      throw new Error(`VictorOps API Error: ${error.response?.status} - ${error.response?.data?.message || error.message}`);
+      if (error.response?.status === 401) {
+        throw new Error("Invalid API credentials. Please check your API ID and API Key.");
+      } else if (error.response?.status === 403) {
+        throw new Error("Access denied. Your API key may not have sufficient permissions.");
+      } else if (error.response?.status === 404) {
+        throw new Error("API endpoint not found. Please verify your VictorOps account is properly configured.");
+      } else {
+        throw new Error(`VictorOps API Error: ${error.response?.status} - ${error.response?.data?.message || error.message}`);
+      }
     }
     throw error;
   }
@@ -60,8 +68,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const config = apiConfigSchema.parse(req.body);
       
-      // Test connection by fetching user profile
-      await makeVictorOpsRequest("/profile", config.apiId, config.apiKey);
+      // Test connection by fetching user info instead of profile
+      await makeVictorOpsRequest("/user", config.apiId, config.apiKey);
       
       // Store API config if connection successful
       await storage.setApiConfig(config);
